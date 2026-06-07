@@ -24,12 +24,10 @@ export const imagesRule = {
       realValue = encodeURI(realValue);
     }
     if (yarleOptions.keepImageSize){
-      let sizeString = (widthParam || heightParam) ? ` =${widthParam}x${heightParam}` : '';
-
-      // while this isn't really a standard, it is common enough
+      let sizeString = '';
       if (yarleOptions.imageSizeFormat === ImageSizeFormat.StandardMD) {
-
-        return `![](${realValue}${sizeString})`;
+        const srcSpl = nodeProxy.src.value.split('/');
+        return `![${srcSpl[srcSpl.length - 1]}](${realValue})`;
       } else if (yarleOptions.imageSizeFormat === ImageSizeFormat.ObsidianMD) {
         sizeString = (widthParam || heightParam) ? `${widthParam || 0}x${heightParam || 0}` : '';
         if (realValue.startsWith('./') || realValue.startsWith('..')) {

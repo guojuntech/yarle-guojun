@@ -14,6 +14,22 @@ import { loggerInfo } from './loggerInfo';
 export const paths: Path = {};
 const MAX_PATH = 249;
 
+const truncateUtf8 = (value: string, maxBytes: number): string => {
+  let truncated = '';
+  let bytes = 0;
+
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char);
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+    truncated += char;
+    bytes += charBytes;
+  }
+
+  return truncated;
+};
+
 export const getResourceDir = (dstPath: string, note: EvernoteNoteData): string => {
   return getNoteName(dstPath, note).replace(/\s/g, '_').substr(0, 50);
 };
@@ -26,10 +42,23 @@ export const truncatFileName = (fileName: string, uniqueId: string): string => 
 
   const fullPath = `${getNotesPath()}${path.sep}${fileName}`;
 
-  return fullPath.length <  MAX_PATH ? fileName : `${fileName.slice(0, MAX_PATH - 11)}_${uniqueId}.md`;
+  if (Buffer.byteLength(fullPath) <  MAX_PATH) {
+    return fileName;
+  }
+
+  const extension = path.extname(fileName) || '.md';
+  const fileNamePrefix = extension ? fileName.slice(0, -extension.length) : fileName;
+  const suffix = `_${uniqueId}${extension}`;
+  const maxPrefixLength = MAX_PATH - Buffer.byteLength(`${getNotesPath()}${path.sep}`) - Buffer.byteLength(suffix);
+
+  if (maxPrefixLength <= 0) {
+    throw Error('FATAL: note folder directory path exceeds the OS limitation. Please pick a destination closer to the root folder.');
+  }
+
+  return `${truncateUtf8(fileNamePrefix, maxPrefixLength)}${suffix}`;
 };
 
-const truncateFilePath = (note: EvernoteNoteData, fileName: string, fullFilePath: string): string => {
+const truncateFilePath = (dstPath: string, note: EvernoteNoteData, fileName: string): string => {
   const noteIdNameMap = RuntimePropertiesSingleton.getInstance();
 
   const noteIdMap = noteIdNameMap.getNoteIdNameMapByNoteTitle(normalizeFilenameString(note.title))[0] || {uniqueEnd: getUniqueId()};
@@ -39,15 +68,23 @@ const truncateFilePath = (note: EvernoteNoteData, fileName: string, fullFilePath
     throw Error('FATAL: note folder directory path exceeds the OS limitation. Please pick a destination closer to the root folder.');
   }
 
-  return `${fullFilePath.slice(0, MAX_PATH - 11)}_${noteIdMap.uniqueEnd}.md`;
-  // -11 is the nanoid 5 char +_+ the max possible extension of the note (.md vs .html)
+  const extension = path.extname(fileName);
+  const fileNamePrefix = extension ? fileName.slice(0, -extension.length) : fileName;
+  const suffix = `_${noteIdMap.uniqueEnd}${extension}`;
+  const maxPrefixLength = MAX_PATH - Buffer.byteLength(`${dstPath}${path.sep}`) - Buffer.byteLength(suffix);
+
+  if (maxPrefixLength <= 0) {
+    throw Error('FATAL: note folder directory path exceeds the OS limitation. Please pick a destination closer to the root folder.');
+  }
+
+  return `${dstPath}${path.sep}${truncateUtf8(fileNamePrefix, maxPrefixLength)}${suffix}`;
 };
 
 const getFilePath = (dstPath: string, note: EvernoteNoteData, extension: string): string => {
   const fileName = getNoteFileName(dstPath, note, extension);
-  const fullFilePath = `${dstPath}${path.sep}${normalizeFilenameString(fileName)}`;
+  const fullFilePath = `${dstPath}${path.sep}${fileName}`;
 
-  return fullFilePath.length < MAX_PATH ? fullFilePath : truncateFilePath(note, fileName, fullFilePath);
+  return Buffer.byteLength(fullFilePath) < MAX_PATH ? fullFilePath : truncateFilePath(dstPath, note, fileName);
 };
 
 export const getMdFilePath = (note: EvernoteNoteData): string => {
